@@ -1,0 +1,24 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: aidep_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aidep
+      POSTGRES_PASSWORD: aidep_secret
+      POSTGRES_DB: aidep_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - aidep_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aidep -d aidep_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  aidep_pgdata:
+    driver: local

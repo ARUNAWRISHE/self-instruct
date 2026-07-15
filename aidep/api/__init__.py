@@ -1,0 +1,1 @@
+"""aidep/api package."""

@@ -1,0 +1,1 @@
+"""aidep/schemas package."""

@@ -1,0 +1,39 @@
+# ============================================================
+# AIDEP — Application Configuration
+# ============================================================
+
+app:
+  name: "Autonomous Instruction Data Engineering Platform"
+  version: "1.0.0"
+  env: "development"
+  debug: true
+
+database:
+  # Override with DATABASE_URL env var in production
+  url: "postgresql+psycopg2://aidep:aidep_secret@localhost:5432/aidep_db"
+  pool_size: 5
+  max_overflow: 10
+  echo: false
+
+llm:
+  # Override with LLM_MODEL env var
+  # Use "mock" for offline dry-run (no API key required)
+  model: "mock"
+  temperature: 0.7
+  max_tokens: 2048
+  timeout: 120
+
+pipeline:
+  num_instructions_to_generate: 10
+  validation_similarity_threshold: 0.7
+  quality_threshold: 0.65
+  include_seed_tasks: true
+
+storage:
+  output_dir: "datasets"
+  intermediate_dir: "datasets/intermediate"
+  archives_dir: "datasets/archives"
+
+seed:
+  # Optional: path to a .jsonl file of seed tasks to auto-import on startup
+  seed_tasks_path: ""
