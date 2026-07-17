@@ -5,6 +5,7 @@ These are the canonical data shapes used across all engines and services.
 
 from __future__ import annotations
 
+from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -232,3 +233,31 @@ class PipelineResult(BaseModel):
     export_path: str = ""
     quality_report: Dict[str, Any] = Field(default_factory=dict)
     weaknesses: List[str] = Field(default_factory=list)
+
+
+class PipelineRunStatus(str, Enum):
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class PipelineContext(BaseModel):
+    """
+    ISSUE-01: Single context object that flows through the entire pipeline.
+    The orchestrator mutates this; each engine reads/writes its section.
+    Provides a full audit snapshot of a single pipeline run.
+    """
+
+    run_id: Optional[int] = None
+    version: str = "1.0.0"
+    seeds: List[SeedTask] = Field(default_factory=list)
+    instructions: List[GeneratedInstruction] = Field(default_factory=list)
+    accepted_examples: List[TrainingExample] = Field(default_factory=list)
+    rejected_count: int = 0
+    llm_failure_count: int = 0
+    started_at: Optional[datetime] = None
+    stage_timings: Dict[str, float] = Field(default_factory=dict)
+    export_path: str = ""
+    quality_report: Dict[str, Any] = Field(default_factory=dict)
+    weaknesses: List[str] = Field(default_factory=list)
+    error_log: List[str] = Field(default_factory=list)
