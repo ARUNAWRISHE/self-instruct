@@ -281,6 +281,25 @@ class QualityScoreModel(Base):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+class PipelineRunModel(Base):
+    """pipeline_runs — ISSUE-02: tracks every pipeline execution for audit/monitoring."""
+
+    __tablename__ = "pipeline_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    version: Mapped[str] = mapped_column(String(50), nullable=False, default="1.0.0")
+    status: Mapped[str] = mapped_column(String(50), default="running")  # running | completed | failed
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_seconds: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    seed_count: Mapped[int] = mapped_column(Integer, default=0)
+    instruction_count: Mapped[int] = mapped_column(Integer, default=0)
+    accepted_count: Mapped[int] = mapped_column(Integer, default=0)
+    rejected_count: Mapped[int] = mapped_column(Integer, default=0)
+    dataset_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    error_log: Mapped[Optional[list]] = mapped_column(JSON, default=list)
+
+
 class DatasetModel(Base):
     """datasets — metadata records for each exported dataset version."""
 
