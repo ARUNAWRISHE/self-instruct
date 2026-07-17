@@ -1,8 +1,8 @@
-version: "3.9"
+
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     container_name: aidep_postgres
     restart: unless-stopped
     environment:
@@ -12,7 +12,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - aidep_pgdata:/var/lib/postgresql/data
+      - aidep_pgdata:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U aidep -d aidep_db"]
       interval: 10s

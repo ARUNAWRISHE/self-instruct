@@ -10,7 +10,7 @@ app:
 
 database:
   # Override with DATABASE_URL env var in production
-  url: "postgresql+psycopg2://aidep:aidep_secret@localhost:5432/aidep_db"
+  url: "sqlite:///aidep.db"
   pool_size: 5
   max_overflow: 10
   echo: false
