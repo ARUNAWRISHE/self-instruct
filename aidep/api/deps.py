@@ -5,9 +5,10 @@ Provides shared session, LLM client, and service instances to route handlers.
 
 from __future__ import annotations
 
-from typing import Generator
+from functools import lru_cache
+from typing import Generator, Optional
 
-from fastapi import Depends
+from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
 from aidep.core.config import Settings, get_settings
@@ -22,9 +23,41 @@ def get_db(settings: Settings = Depends(get_settings)) -> Generator[Session, Non
     yield from get_session()
 
 
+@lru_cache(maxsize=1)
+def _get_llm_singleton(model: str, temperature: float, max_tokens: int, timeout: int) -> LLMClient:
+    """ISSUE-08: Module-level LLMClient singleton — created once per process."""
+    from aidep.core.config import get_settings as _gs
+    s = _gs()
+    return LLMClient.from_settings(s)
+
+
 def get_llm(settings: Settings = Depends(get_settings)) -> LLMClient:
-    """Return a cached LLMClient instance."""
-    return LLMClient.from_settings(settings)
+    """Return the cached singleton LLMClient."""
+    return _get_llm_singleton(
+        settings.llm_model,
+        settings.llm_temperature,
+        settings.llm_max_tokens,
+        settings.llm_timeout,
+    )
+
+
+# ── ISSUE-13: Optional API key authentication ──────────────────────────────────
+
+def get_api_key(
+    settings: Settings = Depends(get_settings),
+    x_api_key: Optional[str] = Header(default=None),
+) -> None:
+    """
+    If api_key is set in config, require it via X-Api-Key header.
+    If api_key is blank/unset, auth is disabled (PoC default).
+    """
+    configured_key = getattr(settings, "api_key", None)
+    if configured_key:  # Only enforce if key is configured
+        if x_api_key != configured_key:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or missing X-Api-Key header.",
+            )
 
 
 # ── Service dependencies ───────────────────────────────────────────────────────

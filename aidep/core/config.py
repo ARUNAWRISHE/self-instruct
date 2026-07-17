@@ -33,43 +33,61 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # ── App ──────────────────────────────────────────────────────────────────
+    # ── App ───────────────────────────────────────────────────────────────────────
     app_name: str = "AIDEP"
     app_version: str = "1.0.0"
     app_env: str = "development"
     app_debug: bool = True
 
-    # ── Database ──────────────────────────────────────────────────────────────
+    # ── API ─────────────────────────────────────────────────────────────────────
+    # ISSUE-12: CORS origins — set to specific domain in production
+    cors_origins: list = ["*"]
+    # ISSUE-13: API key — leave blank to disable auth (PoC default)
+    api_key: str = ""
+
+    # ── Database ──────────────────────────────────────────────────────────────────
     database_url: str = (
         "postgresql+psycopg2://aidep:aidep_secret@localhost:5432/aidep_db"
     )
+    # ISSUE-14: These now actually reach base.py via init_db()
     db_pool_size: int = 5
     db_max_overflow: int = 10
     db_echo: bool = False
 
-    # ── LLM ───────────────────────────────────────────────────────────────────
+    # ── LLM ───────────────────────────────────────────────────────────────────────
     llm_model: str = "mock"
     llm_temperature: float = 0.7
     llm_max_tokens: int = 2048
     llm_timeout: int = 120
+    # ISSUE-11: Retry config for LLM failures
+    llm_max_retries: int = 3
+    llm_retry_delay: float = 1.0
 
     # API keys (read from env)
     openai_api_key: Optional[str] = None
     gemini_api_key: Optional[str] = None
     openrouter_api_key: Optional[str] = None
 
-    # ── Pipeline ──────────────────────────────────────────────────────────────
+    # ── Pipeline ──────────────────────────────────────────────────────────────────
     num_instructions_to_generate: int = 10
     validation_similarity_threshold: float = 0.7
     quality_threshold: float = 0.65
     include_seed_tasks: bool = True
 
-    # ── Storage ───────────────────────────────────────────────────────────────
+    # ── ISSUE-05: Quality scoring weights (configurable) ───────────────────────────
+    quality_weight_semantic: float = 0.25
+    quality_weight_reasoning: float = 0.20
+    quality_weight_diversity: float = 0.15
+    quality_weight_consistency: float = 0.15
+    quality_weight_confidence: float = 0.15
+    quality_weight_factual: float = 0.10
+
+    # ── Storage ────────────────────────────────────────────────────────────────────
     output_dir: str = "datasets"
     intermediate_dir: str = "datasets/intermediate"
     archives_dir: str = "datasets/archives"
 
-    # ── Seed ──────────────────────────────────────────────────────────────────
+    # ── Seed ───────────────────────────────────────────────────────────────────────
     seed_tasks_path: str = ""
 
 
