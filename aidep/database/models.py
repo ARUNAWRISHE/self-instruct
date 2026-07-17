@@ -288,9 +288,9 @@ class PipelineRunModel(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     version: Mapped[str] = mapped_column(String(50), nullable=False, default="1.0.0")
-    status: Mapped[str] = mapped_column(String(50), default="running")  # running | completed | failed
-    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
-    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(50), default="running")
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     duration_seconds: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     seed_count: Mapped[int] = mapped_column(Integer, default=0)
     instruction_count: Mapped[int] = mapped_column(Integer, default=0)

@@ -2,13 +2,8 @@
 Instruction Engine — Phase 2
 
 Generates diverse instruction candidates from seed tasks.
-
-Migrated from: next_gen_self_instruct/engines/instruction_gen.py
-Extended with:
-  - Domain expansion (generates instructions per domain)
-  - Difficulty expansion (Easy / Medium / Hard / Expert variants)
-  - Variation generation
-  - DB persistence via InstructionRepository
+ISSUE-03: Prompts loaded from PromptLibraryService, not hardcoded.
+ISSUE-17: create_instruction() return value used directly (id captured immediately).
 """
 
 from __future__ import annotations
@@ -24,6 +19,7 @@ from aidep.core.llm import LLMClient
 from aidep.core.models import GeneratedInstruction, SeedTask
 from aidep.database.repositories.instruction_repo import InstructionRepository
 from aidep.database.repositories.seed_repo import SeedRepository
+from aidep.services.prompt_service import PromptLibraryService
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +30,7 @@ class InstructionEngine(BaseInstructionEngine):
     """
     Generates new instruction candidates by combining seed examples with
     domain and difficulty expansion prompts.
+    ISSUE-03: Uses PromptLibraryService for all prompt text.
     """
 
     def __init__(
@@ -43,6 +40,7 @@ class InstructionEngine(BaseInstructionEngine):
     ):
         self.llm = llm_client
         self.session = session
+        self.prompt_library = PromptLibraryService(session=session)
 
     def generate(
         self,
@@ -57,6 +55,7 @@ class InstructionEngine(BaseInstructionEngine):
             logger.warning("InstructionEngine: seed pool is empty.")
             return []
 
+        template = self.prompt_library.get_prompt("instruction_generation")
         generated: List[GeneratedInstruction] = []
         requests_needed = max(1, (count + 4) // 5)
 
@@ -70,23 +69,9 @@ class InstructionEngine(BaseInstructionEngine):
                 f"Example {i+1}:\nInstruction: {s.instruction}"
                 for i, s in enumerate(samples)
             )
-
-            # Pick a random difficulty to promote variation
             difficulty = random.choice(_DIFFICULTY_LEVELS)
 
-            prompt = (
-                "Create 5 unique, diverse, and well-crafted instructions for an AI assistant. "
-                f"Instructions should target '{difficulty}' difficulty level. "
-                "Vary the domains (coding, writing, math, science, law, business, healthcare, etc.) "
-                "and the format types (step-by-step, question answering, summarization, coding task, etc.).\n\n"
-                f"Reference examples:\n{few_shot}\n\n"
-                "Format your response as a numbered list:\n"
-                "1. [First Instruction]\n"
-                "2. [Second Instruction]\n"
-                "3. [Third Instruction]\n"
-                "4. [Fourth Instruction]\n"
-                "5. [Fifth Instruction]"
-            )
+            prompt = template.format(difficulty=difficulty, few_shot=few_shot)
 
             response = self.llm.generate(
                 prompt,
@@ -101,7 +86,7 @@ class InstructionEngine(BaseInstructionEngine):
 
         result = generated[:count]
 
-        # Persist to DB
+        # Persist to DB — ISSUE-17: use returned record.id directly
         if self.session:
             repo = InstructionRepository(self.session)
             seed_repo = SeedRepository(self.session)
@@ -111,7 +96,8 @@ class InstructionEngine(BaseInstructionEngine):
                     seed_record = seed_repo.get_by_key(inst.seed_id)
                     if seed_record:
                         seed_db_id = seed_record.id
-                repo.create_instruction(inst, seed_db_id=seed_db_id)
+                db_record = repo.create_instruction(inst, seed_db_id=seed_db_id)
+                inst.id = db_record.id  # capture the real DB id immediately
 
         logger.info(
             "InstructionEngine: generated %d instruction candidates.", len(result)
@@ -130,7 +116,6 @@ class InstructionEngine(BaseInstructionEngine):
             if not text:
                 continue
 
-            # Parse "1. Instruction text" or "- Instruction text"
             instruction_text = ""
             if text and text[0].isdigit() and "." in text[:4]:
                 parts = text.split(".", 1)
@@ -157,18 +142,17 @@ class InstructionEngine(BaseInstructionEngine):
         domains: List[str],
         per_domain: int = 5,
     ) -> List[GeneratedInstruction]:
-        """
-        Generate instructions explicitly per domain for balanced coverage.
-        """
+        """Generate instructions explicitly per domain for balanced coverage."""
+        template = self.prompt_library.get_prompt("domain_instruction_generation")
         all_instructions: List[GeneratedInstruction] = []
+
         for domain in domains:
             sample_seed = random.choice(seeds) if seeds else None
-            prompt = (
-                f"Generate {per_domain} diverse, well-crafted instructions for an AI assistant "
-                f"specifically in the domain of '{domain}'. "
-                "Vary difficulty and task types (analysis, writing, computation, QA, planning, etc.).\n\n"
-                + (f"Seed example: {sample_seed.instruction}\n\n" if sample_seed else "")
-                + "Return as a numbered list."
+            seed_example = (
+                f"Seed example: {sample_seed.instruction}\n\n" if sample_seed else ""
+            )
+            prompt = template.format(
+                count=per_domain, domain=domain, seed_example=seed_example
             )
             response = self.llm.generate(
                 prompt,
@@ -182,6 +166,7 @@ class InstructionEngine(BaseInstructionEngine):
         if self.session:
             repo = InstructionRepository(self.session)
             for inst in all_instructions:
-                repo.create_instruction(inst)
+                db_record = repo.create_instruction(inst)
+                inst.id = db_record.id  # ISSUE-17: capture id directly
 
         return all_instructions

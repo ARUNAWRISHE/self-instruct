@@ -1,9 +1,12 @@
-"""Repository for the datasets table."""
+"""Repository for the datasets table.
+ISSUE-06: Migrated to SQLAlchemy 2.0 select() style.
+"""
 
 from __future__ import annotations
 
 from typing import List, Optional
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from aidep.database.models import DatasetModel
@@ -37,18 +40,19 @@ class DatasetRepository:
         return record
 
     def get_all(self) -> List[DatasetModel]:
-        return (
-            self.session.query(DatasetModel)
+        stmt = (
+            select(DatasetModel)
             .order_by(DatasetModel.created_at.desc())
-            .all()
         )
+        return list(self.session.execute(stmt).scalars().all())
 
     def get_latest(self) -> Optional[DatasetModel]:
-        return (
-            self.session.query(DatasetModel)
+        stmt = (
+            select(DatasetModel)
             .order_by(DatasetModel.created_at.desc())
-            .first()
+            .limit(1)
         )
+        return self.session.execute(stmt).scalar_one_or_none()
 
     def get_by_id(self, dataset_id: int) -> Optional[DatasetModel]:
         return self.session.get(DatasetModel, dataset_id)

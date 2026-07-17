@@ -107,3 +107,13 @@ def get_dataset_service(
 ):
     from aidep.services.pipeline_services import DatasetService
     return DatasetService(session, output_dir=settings.output_dir)
+
+
+def get_pipeline_service(
+    session: Session = Depends(get_db),
+    llm: LLMClient = Depends(get_llm),
+    settings: Settings = Depends(get_settings),
+):
+    """ISSUE-15: Provides PipelineService so the route does not wire the orchestrator."""
+    from aidep.services.pipeline_service import PipelineService
+    return PipelineService(session=session, llm_client=llm, settings=settings)

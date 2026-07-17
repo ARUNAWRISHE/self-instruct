@@ -16,6 +16,7 @@ from aidep.api.deps import (
     get_dataset_service,
     get_example_service,
     get_llm,
+    get_pipeline_service,
     get_quality_service,
     get_settings,
     get_validation_service,
@@ -160,13 +161,12 @@ pipeline_router = APIRouter(prefix="/pipeline", tags=["Pipeline Orchestrator"])
 )
 def run_pipeline(
     request: PipelineRunRequest,
-    db=Depends(get_db),
-    llm=Depends(get_llm),
-    settings=Depends(get_settings),
+    pipeline_service=Depends(get_pipeline_service),
 ):
     """
-    Runs all 7 AIDEP phases in sequence:
+    ISSUE-15: Route delegates entirely to PipelineService — no orchestrator wiring here.
 
+    Runs all 7 AIDEP phases in sequence:
     1. Knowledge Foundation (load seeds)
     2. Instruction Generation
     3. Task Intelligence
@@ -174,25 +174,12 @@ def run_pipeline(
     5. Validation
     6. Quality Scoring
     7. Dataset Export
-
-    This is the primary end-to-end pipeline endpoint.
     """
-    from aidep.orchestrator.pipeline import AIDEPOrchestrator
-    from aidep.core.models import SeedTask
-
-    orchestrator = AIDEPOrchestrator(
-        llm_client=llm,
-        session=db,
-        num_instructions=request.count,
-        similarity_threshold=settings.validation_similarity_threshold,
-        quality_threshold=settings.quality_threshold,
-        output_dir=settings.output_dir,
+    result = pipeline_service.run(
+        count=request.count,
+        version=request.version,
+        seed_file=request.seed_file or "",
     )
-
-    if request.seed_file:
-        orchestrator.load_seeds_from_file(request.seed_file)
-
-    result = orchestrator.run_pipeline(version=request.version)
 
     return PipelineRunResponse(
         total_candidates=result.total_candidates,

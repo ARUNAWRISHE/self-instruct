@@ -1,16 +1,8 @@
 """
 Intelligence Engine — Phase 3
 
-Analyzes each generated instruction to produce structured task metadata:
-  - Task Type
-  - Domain / Subdomain
-  - Difficulty
-  - Reasoning Level
-  - Expected Output Format
-  - Complexity Score
-
-Migrated from: next_gen_self_instruct/engines/task_intelligence.py
-Extended with: DB persistence via InstructionRepository
+Analyzes each generated instruction to produce structured task metadata.
+ISSUE-03: Prompt loaded from PromptLibraryService, not hardcoded.
 """
 
 from __future__ import annotations
@@ -31,6 +23,7 @@ from aidep.core.models import (
     TaskCategory,
 )
 from aidep.database.repositories.instruction_repo import InstructionRepository
+from aidep.services.prompt_service import PromptLibraryService
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +31,7 @@ logger = logging.getLogger(__name__)
 class IntelligenceEngine(BaseIntelligenceEngine):
     """
     Classifies each instruction into a rich metadata structure using LLM analysis.
+    ISSUE-03: Uses PromptLibraryService for all prompt text.
     Persists metadata to DB if a session is available.
     """
 
@@ -48,38 +42,14 @@ class IntelligenceEngine(BaseIntelligenceEngine):
     ):
         self.llm = llm_client
         self.session = session
+        self.prompt_library = PromptLibraryService(session=session)
 
     def analyze(
         self, instruction: GeneratedInstruction
     ) -> InstructionMetadata:
         """Classify the instruction and return structured InstructionMetadata."""
-        prompt = (
-            f"Analyze the following AI task instruction:\n"
-            f"Instruction: {instruction.instruction}\n\n"
-            "Identify these attributes:\n"
-            "1. Task Type: one of — Generation, Classification, Summarization, "
-            "Translation, Question Answering, Information Extraction, Reasoning, "
-            "Coding, Planning, Dialogue.\n"
-            "2. Category: one of — coding, classification, reasoning, translation, "
-            "summarization, generation, planning, dialogue, other.\n"
-            "3. Domain: specific area of knowledge (e.g. Science, Mathematics, Law, "
-            "Software Engineering, Healthcare, Finance, Literature, General).\n"
-            "4. Subdomain: a sub-category of the domain.\n"
-            "5. Difficulty: one of — Easy, Medium, Hard, Expert.\n"
-            "6. Reasoning Level: one of — Low, Medium, High, Expert.\n"
-            "7. Expected Output Type: format of the response (e.g. Code, JSON, "
-            "Markdown, Text, Table, Boolean, Label, Number).\n"
-            "8. Complexity: a float from 0.0 to 1.0 estimating structural complexity.\n\n"
-            "Respond EXACTLY in this format (one attribute per line):\n"
-            "Task Type: [value]\n"
-            "Category: [value]\n"
-            "Domain: [value]\n"
-            "Subdomain: [value]\n"
-            "Difficulty: [value]\n"
-            "Reasoning Level: [value]\n"
-            "Expected Output Type: [value]\n"
-            "Complexity: [value]"
-        )
+        template = self.prompt_library.get_prompt("task_intelligence")
+        prompt = template.format(instruction=instruction.instruction)
 
         response = self.llm.generate(
             prompt, system_prompt="You are a precise semantic analyzer for AI tasks."
@@ -178,7 +148,6 @@ class IntelligenceEngine(BaseIntelligenceEngine):
         }
         if normalized in mapping:
             return mapping[normalized]
-        # Try numeric fallback (from legacy data)
         try:
             match = re.search(r"\d+", val)
             if match:

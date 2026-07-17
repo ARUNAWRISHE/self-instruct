@@ -1,14 +1,8 @@
 """
 Example Engine — Phase 4
 
-Converts an analyzed instruction into a complete training example:
-  - Generates realistic input (if needed)
-  - Generates correct output
-  - Extracts constraints
-  - Persists to training_examples table
-
-Migrated from: next_gen_self_instruct/engines/example_gen.py
-Extended with: DB persistence via ExampleRepository
+Converts an analyzed instruction into a complete training example.
+ISSUE-03: Prompt loaded from PromptLibraryService, not hardcoded.
 """
 
 from __future__ import annotations
@@ -28,6 +22,7 @@ from aidep.core.models import (
     TrainingExample,
 )
 from aidep.database.repositories.example_repo import ExampleRepository
+from aidep.services.prompt_service import PromptLibraryService
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +30,7 @@ logger = logging.getLogger(__name__)
 class ExampleEngine(BaseExampleEngine):
     """
     Generates input/output training pairs for each instruction.
+    ISSUE-03: Uses PromptLibraryService for all prompt text.
     Stores the result in the training_examples table.
     """
 
@@ -45,6 +41,7 @@ class ExampleEngine(BaseExampleEngine):
     ):
         self.llm = llm_client
         self.session = session
+        self.prompt_library = PromptLibraryService(session=session)
 
     def generate_example(
         self,
@@ -55,22 +52,13 @@ class ExampleEngine(BaseExampleEngine):
         Generate a training example (input + output + constraints)
         for the given instruction.
         """
-        prompt = (
-            f"Generate a realistic input (if needed) and a correct, high-quality output "
-            f"for the following AI task instruction:\n\n"
-            f"Instruction: {instruction.instruction}\n"
-            f"Task Type: {metadata.task_type}\n"
-            f"Domain: {metadata.domain}\n"
-            f"Difficulty: {metadata.difficulty.value}\n"
-            f"Expected Output Type: {metadata.expected_output_type}\n\n"
-            "Rules:\n"
-            "- If the instruction is self-contained (e.g. 'Write a story'), set Input to None.\n"
-            "- The output must be complete, accurate, and well-formatted.\n"
-            "- List any explicit constraints (format, tone, length, etc.) as a comma-separated list, or None.\n\n"
-            "Respond EXACTLY in this format:\n"
-            "Constraints: [comma-separated list or None]\n"
-            "Input: [the input, or None]\n"
-            "Output: [the complete, correct response]"
+        template = self.prompt_library.get_prompt("example_generation")
+        prompt = template.format(
+            instruction=instruction.instruction,
+            task_type=metadata.task_type,
+            domain=metadata.domain,
+            difficulty=metadata.difficulty.value,
+            expected_output_type=metadata.expected_output_type,
         )
 
         response = self.llm.generate(
@@ -134,7 +122,7 @@ class ExampleEngine(BaseExampleEngine):
 
             elif lower.startswith("input:"):
                 if current_field == "constraints":
-                    pass  # no multi-line constraints
+                    pass
                 current_field = "input"
                 val = stripped[len("input:"):].strip()
                 current_text = [val] if val.lower() not in ("none", "") else []
