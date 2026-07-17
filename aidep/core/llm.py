@@ -6,12 +6,15 @@ Supports:
     gemini/gemini-1.5-flash
     openrouter/openai/gpt-4o
     mock  (offline dry-run — no API key required)
+
+ISSUE-11: Added configurable retry logic with exponential back-off.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import time
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -70,6 +73,8 @@ class LLMClient:
         temperature: Sampling temperature.
         max_tokens: Maximum tokens in completion.
         timeout: Request timeout in seconds.
+        max_retries: ISSUE-11 — number of retry attempts on transient failures.
+        retry_delay: ISSUE-11 — base delay in seconds between retries (doubles each attempt).
     """
 
     def __init__(
@@ -79,11 +84,15 @@ class LLMClient:
         max_tokens: int = 2048,
         timeout: int = 120,
         api_keys: Optional[dict] = None,
+        max_retries: int = 3,
+        retry_delay: float = 1.0,
     ):
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.timeout = timeout
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
         self._is_mock = model.lower() == "mock"
 
         if not self._is_mock and api_keys:
@@ -97,30 +106,51 @@ class LLMClient:
         prompt: str,
         system_prompt: str = "You are a helpful assistant.",
     ) -> str:
-        """Generate a response for the given prompt."""
+        """
+        Generate a response for the given prompt.
+
+        ISSUE-11: Retries up to max_retries times with exponential back-off
+        before falling back to mock. Logs each failure explicitly so operators
+        can see degradation in logs rather than discovering it silently.
+        """
         if self._is_mock:
             logger.debug("Mock mode: returning cached response.")
             return _mock_generate(prompt)
 
-        try:
-            import litellm  # noqa: PLC0415 — lazy import
+        last_exc: Optional[Exception] = None
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                import litellm  # noqa: PLC0415 — lazy import
 
-            response = litellm.completion(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt},
-                ],
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
-                timeout=self.timeout,
-            )
-            return response.choices[0].message.content.strip()
-        except Exception as exc:
-            logger.warning(
-                "LiteLLM call failed (%s). Falling back to mock generator.", exc
-            )
-            return _mock_generate(prompt)
+                response = litellm.completion(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=self.temperature,
+                    max_tokens=self.max_tokens,
+                    timeout=self.timeout,
+                )
+                return response.choices[0].message.content.strip()
+
+            except Exception as exc:
+                last_exc = exc
+                if attempt < self.max_retries:
+                    wait = self.retry_delay * (2 ** (attempt - 1))  # exponential back-off
+                    logger.warning(
+                        "LiteLLM call failed (attempt %d/%d): %s. Retrying in %.1fs...",
+                        attempt, self.max_retries, exc, wait,
+                    )
+                    time.sleep(wait)
+                else:
+                    logger.error(
+                        "LiteLLM call failed after %d attempts: %s. "
+                        "Falling back to mock generator — output quality degraded.",
+                        self.max_retries, exc,
+                    )
+
+        return _mock_generate(prompt)
 
     @classmethod
     def from_settings(cls, settings) -> "LLMClient":
@@ -130,6 +160,8 @@ class LLMClient:
             temperature=settings.llm_temperature,
             max_tokens=settings.llm_max_tokens,
             timeout=settings.llm_timeout,
+            max_retries=getattr(settings, "llm_max_retries", 3),
+            retry_delay=getattr(settings, "llm_retry_delay", 1.0),
             api_keys={
                 "OPENAI_API_KEY": settings.openai_api_key,
                 "GEMINI_API_KEY": settings.gemini_api_key,
