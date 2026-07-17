@@ -13,11 +13,11 @@ class Base(DeclarativeBase):
     pass
 
 
-def _build_engine(database_url: str, echo: bool = False):
+def _build_engine(database_url: str, echo: bool = False, pool_size: int = 5, max_overflow: int = 10):
     return create_engine(
         database_url,
-        pool_size=5,
-        max_overflow=10,
+        pool_size=pool_size,
+        max_overflow=max_overflow,
         echo=echo,
         pool_pre_ping=True,
     )
@@ -33,10 +33,10 @@ _engine = None
 _SessionLocal: sessionmaker | None = None
 
 
-def init_db(database_url: str, echo: bool = False) -> None:
+def init_db(database_url: str, echo: bool = False, pool_size: int = 5, max_overflow: int = 10) -> None:
     """Initialize the module-level engine and session factory."""
     global _engine, _SessionLocal
-    _engine = _build_engine(database_url, echo=echo)
+    _engine = _build_engine(database_url, echo=echo, pool_size=pool_size, max_overflow=max_overflow)
     _SessionLocal = sessionmaker(
         bind=_engine, autocommit=False, autoflush=False, class_=Session
     )
