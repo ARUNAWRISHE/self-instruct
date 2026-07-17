@@ -49,7 +49,12 @@ async def lifespan(app: FastAPI):
 
     # Initialise database (creates tables if not present)
     try:
-        init_db(database_url=settings.database_url, echo=settings.db_echo)
+        init_db(
+            database_url=settings.database_url,
+            echo=settings.db_echo,
+            pool_size=settings.db_pool_size,
+            max_overflow=settings.db_max_overflow,
+        )
         logger.info("Database initialised: %s", settings.database_url)
     except Exception as exc:
         logger.warning(
@@ -94,10 +99,10 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # ── CORS ──────────────────────────────────────────────────────────────────
+    # ── CORS (ISSUE-12: driven by config) ────────────────────────────────────
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=settings.cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
