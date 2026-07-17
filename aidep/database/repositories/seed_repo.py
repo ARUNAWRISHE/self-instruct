@@ -1,9 +1,12 @@
-"""Repository for seed_tasks table operations."""
+"""Repository for seed_tasks table operations.
+ISSUE-06: Migrated to SQLAlchemy 2.0 select() style.
+"""
 
 from __future__ import annotations
 
 from typing import List, Optional
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from aidep.core.models import SeedTask
@@ -16,11 +19,8 @@ class SeedRepository:
 
     def create(self, seed: SeedTask) -> SeedTaskModel:
         """Persist a SeedTask. Skips duplicates (by task_key)."""
-        existing = (
-            self.session.query(SeedTaskModel)
-            .filter(SeedTaskModel.task_key == seed.id)
-            .first()
-        )
+        stmt = select(SeedTaskModel).where(SeedTaskModel.task_key == seed.id)
+        existing = self.session.execute(stmt).scalar_one_or_none()
         if existing:
             return existing
 
@@ -40,17 +40,16 @@ class SeedRepository:
         return record
 
     def get_all(self) -> List[SeedTaskModel]:
-        return self.session.query(SeedTaskModel).order_by(SeedTaskModel.id).all()
+        stmt = select(SeedTaskModel).order_by(SeedTaskModel.id)
+        return list(self.session.execute(stmt).scalars().all())
 
     def get_by_id(self, seed_id: int) -> Optional[SeedTaskModel]:
         return self.session.get(SeedTaskModel, seed_id)
 
     def get_by_key(self, task_key: str) -> Optional[SeedTaskModel]:
-        return (
-            self.session.query(SeedTaskModel)
-            .filter(SeedTaskModel.task_key == task_key)
-            .first()
-        )
+        stmt = select(SeedTaskModel).where(SeedTaskModel.task_key == task_key)
+        return self.session.execute(stmt).scalar_one_or_none()
 
     def count(self) -> int:
-        return self.session.query(SeedTaskModel).count()
+        stmt = select(SeedTaskModel)
+        return len(self.session.execute(stmt).scalars().all())
