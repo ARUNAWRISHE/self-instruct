@@ -140,11 +140,21 @@ class PipelineRunRequest(BaseModel):
 
 
 class PipelineRunResponse(BaseModel):
-    total_candidates: int
+    run_id: int
+    message: str
+
+
+class PipelineStatusResponse(BaseModel):
+    run_id: int
+    version: str
+    status: str
+    started_at: str
+    completed_at: Optional[str]
+    duration_seconds: Optional[float]
+    seed_count: int
+    instruction_count: int
     accepted_count: int
     rejected_count: int
-    total_dataset_size: int
-    export_path: str
-    weaknesses: List[str]
-    quality_report: Dict[str, Any]
-    message: str
+    dataset_path: Optional[str]
+    error_log: List[Any]
+

@@ -96,6 +96,7 @@ class AIDEPOrchestrator(BaseOrchestrator):
         self,
         seeds: Optional[List[SeedTask]] = None,
         version: str = "1.0.0",
+        run_id: Optional[int] = None,
     ) -> PipelineResult:
         """
         Execute the full AIDEP pipeline end-to-end.
@@ -111,8 +112,11 @@ class AIDEPOrchestrator(BaseOrchestrator):
         # ISSUE-02: Record run start
         run_repo = PipelineRunRepository(self.session) if self.session else None
         if run_repo:
-            run_record = run_repo.create(version=version)
-            ctx.run_id = run_record.id
+            if run_id is None:
+                run_record = run_repo.create(version=version)
+                ctx.run_id = run_record.id
+            else:
+                ctx.run_id = run_id
             logger.info("Orchestrator: pipeline_run id=%d started.", ctx.run_id)
 
         logger.info("=" * 60)

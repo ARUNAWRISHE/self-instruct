@@ -197,20 +197,43 @@ elif page == "Seed Knowledge Base":
 
 elif page == "Pipeline Orchestrator":
     st.title("⚙️ Pipeline Orchestrator")
-    st.write("Run the end-to-end instruction generation pipeline.")
+    st.write("Run and monitor the end-to-end instruction generation pipeline.")
     
-    with st.form("pipeline_form"):
-        st.write("Configure Pipeline Run")
-        count = st.number_input("Number of instructions to generate", min_value=1, max_value=200, value=10)
-        
-        submitted = st.form_submit_button("Run Pipeline")
-        
-    if submitted:
-        with st.spinner(f"Running pipeline to generate {count} instructions... This may take a while."):
-            res = run_pipeline(count)
-            if res.status_code == 202 or res.status_code == 200:
-                data = res.json()
-                st.success("Pipeline completed successfully!")
-                st.json(data)
+    tab_run, tab_history = st.tabs(["Run Pipeline", "Pipeline History"])
+    
+    with tab_run:
+        with st.form("pipeline_form"):
+            st.write("Configure Pipeline Run")
+            count = st.number_input("Number of instructions to generate", min_value=1, max_value=200, value=10)
+            
+            submitted = st.form_submit_button("Run Pipeline (Background)")
+            
+        if submitted:
+            with st.spinner("Submitting pipeline run..."):
+                res = run_pipeline(count)
+                if res.status_code in (200, 202):
+                    data = res.json()
+                    st.success(f"Pipeline started! Run ID: {data.get('run_id')}")
+                    st.info(data.get("message"))
+                else:
+                    st.error(f"Failed to start pipeline: {res.text}")
+
+    with tab_history:
+        st.subheader("Recent Pipeline Runs")
+        if st.button("Refresh History"):
+            pass  # Triggers a rerun
+            
+        try:
+            res = requests.get(f"{API_BASE_URL}/pipeline/runs", timeout=5)
+            if res.status_code == 200:
+                runs = res.json()
+                if runs:
+                    df = pd.DataFrame(runs)
+                    display_cols = ["run_id", "status", "started_at", "duration_seconds", "seed_count", "accepted_count", "rejected_count"]
+                    st.dataframe(df[[c for c in display_cols if c in df.columns]], use_container_width=True)
+                else:
+                    st.info("No pipeline runs found.")
             else:
-                st.error(f"Pipeline failed: {res.text}")
+                st.error(f"Failed to fetch history: {res.text}")
+        except Exception as e:
+            st.error(f"Error connecting to API: {e}")

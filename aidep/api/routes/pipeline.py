@@ -10,6 +10,8 @@ POST /pipeline/run       — Run full end-to-end pipeline
 
 from __future__ import annotations
 
+from typing import List
+
 from fastapi import APIRouter, BackgroundTasks, Depends, status
 
 from aidep.api.deps import (
@@ -153,44 +155,133 @@ def export_dataset(
 # ── Full pipeline ─────────────────────────────────────────────────────────────
 pipeline_router = APIRouter(prefix="/pipeline", tags=["Pipeline Orchestrator"])
 
+
+def _run_pipeline_bg(
+    count: int,
+    version: str,
+    seed_file: str,
+    llm,
+    settings,
+    run_id: int,
+):
+    from aidep.database.base import _SessionLocal
+    from aidep.services.pipeline_service import PipelineService
+    
+    session = _SessionLocal()
+    try:
+        pipeline_service = PipelineService(session=session, llm_client=llm, settings=settings)
+        pipeline_service.run(
+            count=count,
+            version=version,
+            seed_file=seed_file,
+            run_id=run_id,
+        )
+    finally:
+        session.close()
+
+
 @pipeline_router.post(
     "/run",
     response_model=PipelineRunResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Run the complete AIDEP pipeline end-to-end",
+    summary="Run the complete AIDEP pipeline end-to-end in the background",
 )
 def run_pipeline(
     request: PipelineRunRequest,
-    pipeline_service=Depends(get_pipeline_service),
+    background_tasks: BackgroundTasks,
+    db=Depends(get_db),
+    llm=Depends(get_llm),
+    settings=Depends(get_settings),
 ):
     """
-    ISSUE-15: Route delegates entirely to PipelineService — no orchestrator wiring here.
-
-    Runs all 7 AIDEP phases in sequence:
-    1. Knowledge Foundation (load seeds)
-    2. Instruction Generation
-    3. Task Intelligence
-    4. Training Example Generation
-    5. Validation
-    6. Quality Scoring
-    7. Dataset Export
+    ISSUE-19: Enqueues pipeline run as a background task and returns immediately.
     """
-    result = pipeline_service.run(
+    from aidep.database.repositories.pipeline_run_repo import PipelineRunRepository
+    
+    # Pre-create the run to return the ID immediately
+    run_repo = PipelineRunRepository(db)
+    run_record = run_repo.create(version=request.version)
+    run_id = run_record.id
+
+    background_tasks.add_task(
+        _run_pipeline_bg,
         count=request.count,
         version=request.version,
         seed_file=request.seed_file or "",
+        llm=llm,
+        settings=settings,
+        run_id=run_id,
     )
 
     return PipelineRunResponse(
-        total_candidates=result.total_candidates,
-        accepted_count=result.accepted_count,
-        rejected_count=result.rejected_count,
-        total_dataset_size=result.total_dataset_size,
-        export_path=result.export_path,
-        weaknesses=result.weaknesses,
-        quality_report=result.quality_report,
-        message=(
-            f"Pipeline complete. {result.accepted_count}/{result.total_candidates} "
-            f"examples accepted. Dataset: {result.export_path}"
-        ),
+        run_id=run_id,
+        message=f"Pipeline run started in the background (run_id={run_id}). Check status via GET /pipeline/status/{run_id}",
     )
+
+
+@pipeline_router.get(
+    "/status/{run_id}",
+    response_model=PipelineStatusResponse,
+    summary="Check status of a pipeline run",
+)
+def get_pipeline_status(
+    run_id: int,
+    db=Depends(get_db),
+):
+    from aidep.database.repositories.pipeline_run_repo import PipelineRunRepository
+    from fastapi import HTTPException
+    
+    run_repo = PipelineRunRepository(db)
+    record = run_repo.get_by_id(run_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Pipeline run not found")
+        
+    return PipelineStatusResponse(
+        run_id=record.id,
+        version=record.version,
+        status=record.status,
+        started_at=record.started_at.isoformat() if record.started_at else "",
+        completed_at=record.completed_at.isoformat() if record.completed_at else None,
+        duration_seconds=record.duration_seconds,
+        seed_count=record.seed_count,
+        instruction_count=record.instruction_count,
+        accepted_count=record.accepted_count,
+        rejected_count=record.rejected_count,
+        dataset_path=record.dataset_path,
+        error_log=record.error_log or [],
+    )
+
+
+@pipeline_router.get(
+    "/runs",
+    response_model=List[PipelineStatusResponse],
+    summary="List recent pipeline runs",
+)
+def list_pipeline_runs(
+    limit: int = 50,
+    db=Depends(get_db),
+):
+    """ISSUE-20: Fetch recent pipeline runs for UI history."""
+    from aidep.database.repositories.pipeline_run_repo import PipelineRunRepository
+    
+    run_repo = PipelineRunRepository(db)
+    records = run_repo.get_all(limit=limit)
+    
+    return [
+        PipelineStatusResponse(
+            run_id=record.id,
+            version=record.version,
+            status=record.status,
+            started_at=record.started_at.isoformat() if record.started_at else "",
+            completed_at=record.completed_at.isoformat() if record.completed_at else None,
+            duration_seconds=record.duration_seconds,
+            seed_count=record.seed_count,
+            instruction_count=record.instruction_count,
+            accepted_count=record.accepted_count,
+            rejected_count=record.rejected_count,
+            dataset_path=record.dataset_path,
+            error_log=record.error_log or [],
+        )
+        for record in records
+    ]
+

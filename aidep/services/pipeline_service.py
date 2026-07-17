@@ -35,6 +35,7 @@ class PipelineService:
         count: int,
         version: str = "1.0.0",
         seed_file: str = "",
+        run_id: Optional[int] = None,
     ) -> PipelineResult:
         """Build the orchestrator and run the full pipeline."""
         from aidep.orchestrator.pipeline import AIDEPOrchestrator  # noqa: PLC0415
@@ -60,4 +61,4 @@ class PipelineService:
         if seed_file:
             orchestrator.load_seeds_from_file(seed_file)
 
-        return orchestrator.run_pipeline(version=version)
+        return orchestrator.run_pipeline(version=version, run_id=run_id)
